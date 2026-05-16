@@ -7,7 +7,6 @@
 
 // A struct that represents a reader-writer lock
 typedef struct {
-
     // A mutex that protects the shared data and the counters
     pthread_mutex_t mutex;
 
@@ -19,13 +18,17 @@ typedef struct {
 
     // A flag that indicates whether there is an active writer
     int writer;
-
 } rwlock_t;
 
+// Global variables that represent the shared data
+int fd;
+int data = 0;
+
+// A global variable that represents the reader-writer lock
+rwlock_t lock;
 
 // A function that initializes a reader-writer lock
 void rwlock_init(rwlock_t *lock) {
-
     // Initialize the mutex
     pthread_mutex_init(&lock->mutex, NULL);
 
@@ -39,10 +42,8 @@ void rwlock_init(rwlock_t *lock) {
     lock->writer = 0;
 }
 
-
 // A function that acquires a read lock
 void readLock(rwlock_t *lock) {
-
     // Lock the mutex
     pthread_mutex_lock(&lock->mutex);
 
@@ -58,10 +59,8 @@ void readLock(rwlock_t *lock) {
     pthread_mutex_unlock(&lock->mutex);
 }
 
-
 // A function that releases a read lock
 void readUnlock(rwlock_t *lock) {
-
     // Lock the mutex
     pthread_mutex_lock(&lock->mutex);
 
@@ -77,10 +76,8 @@ void readUnlock(rwlock_t *lock) {
     pthread_mutex_unlock(&lock->mutex);
 }
 
-
 // A function that acquires a write lock
 void writeLock(rwlock_t *lock) {
-
     // Lock the mutex
     pthread_mutex_lock(&lock->mutex);
 
@@ -96,10 +93,8 @@ void writeLock(rwlock_t *lock) {
     pthread_mutex_unlock(&lock->mutex);
 }
 
-
 // A function that releases a write lock
 void writeUnlock(rwlock_t *lock) {
-
     // Lock the mutex
     pthread_mutex_lock(&lock->mutex);
 
@@ -113,10 +108,8 @@ void writeUnlock(rwlock_t *lock) {
     pthread_mutex_unlock(&lock->mutex);
 }
 
-
 // A helper function to write integer numbers using write()
 void writeNumber(int fd, int num) {
-
     char digits[20];
     int i = 0;
 
@@ -140,31 +133,19 @@ void writeNumber(int fd, int num) {
     }
 }
 
-
-// Global variables that represent the shared data
-int fd;
-int data = 0;
-
-// A global variable that represents the reader-writer lock
-rwlock_t lock;
-
-
 // A function that simulates a reader thread
 void *reader(void *arg) {
-
     // Get the thread id from the argument
     int id = *(int *)arg;
 
     // Acquire a read lock
     readLock(&lock);
 
-    printf("Reader %d: data = %d\n", id, data);
-
     // Open the file for reading
     int readFd;
 
     // Buffer to store file content
-    char buffer[101];
+    char buffer[1000];
 
     // Variable to store number of bytes read
     int bytesRead;
@@ -173,27 +154,21 @@ void *reader(void *arg) {
 
     // Check if open failed
     if (readFd < 0) {
-
         perror("open");
-
     } else {
-
-        // Read up to 100 bytes from the file
-        bytesRead = read(readFd, buffer, 100);
+        // Read up to 999 bytes from the file
+        bytesRead = read(readFd, buffer, 999);
 
         // Check if read failed
         if (bytesRead < 0) {
-
             perror("read");
-
         } else {
-
             // Add null character at end of string
             buffer[bytesRead] = '\0';
 
-            // Print file content
-            printf("Reader thread id: %d -> with data: %d -> file content: %s\n",
-                   id, data, buffer);
+            // Print reader id, data, and file content
+            printf("Reader %d data = %d\n", id, data);
+            printf("File content:\n%s\n", buffer);
         }
 
         // Close the file
@@ -206,10 +181,8 @@ void *reader(void *arg) {
     return NULL;
 }
 
-
 // A function that simulates a writer thread
 void *writer(void *arg) {
-
     // Get the thread id from the argument
     int id = *(int *)arg;
 
@@ -221,15 +194,11 @@ void *writer(void *arg) {
 
     printf("Writer %d: data = %d\n", id, data);
 
-    // Write thread information into file
+    // Write the writer thread id and data to the file
     write(fd, "Writer thread: ", strlen("Writer thread: "));
-
     writeNumber(fd, id);
-
     write(fd, " with data: ", strlen(" with data: "));
-
     writeNumber(fd, data);
-
     write(fd, "\n", 1);
 
     // Release a write lock
@@ -238,23 +207,19 @@ void *writer(void *arg) {
     return NULL;
 }
 
-
 // A constant that defines the number of reader threads
 #define NUM_READERS 5
 
 // A constant that defines the number of writer threads
 #define NUM_WRITERS 3
 
-
 // The main function
 int main(int argc, char *argv[]) {
-
     // Open file.txt in read-write mode, create it if needed, and append on write
     fd = open("file.txt", O_RDWR | O_CREAT | O_APPEND, 0644);
 
     // Check if file open failed
     if (fd < 0) {
-
         perror("open");
         return 1;
     }
@@ -276,7 +241,6 @@ int main(int argc, char *argv[]) {
 
     // Loop through the writer thread ids
     for (int i = 0; i < NUM_WRITERS; i++) {
-
         // Assign the id to the current index
         writerIds[i] = i + 1;
 
@@ -286,7 +250,6 @@ int main(int argc, char *argv[]) {
 
     // Loop through the reader thread ids
     for (int i = 0; i < NUM_READERS; i++) {
-
         // Assign the id to the current index
         readerIds[i] = i + 1;
 
@@ -296,14 +259,12 @@ int main(int argc, char *argv[]) {
 
     // Loop through the writer thread handles
     for (int i = 0; i < NUM_WRITERS; i++) {
-
         // Join the writer thread
         pthread_join(writerThreads[i], NULL);
     }
 
     // Loop through the reader thread handles
     for (int i = 0; i < NUM_READERS; i++) {
-
         // Join the reader thread
         pthread_join(readerThreads[i], NULL);
     }

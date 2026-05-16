@@ -7,30 +7,42 @@
 
 // A struct that represents a reader-writer lock
 typedef struct {
+
     // A mutex that protects the shared data and the counters
     pthread_mutex_t mutex;
+
     // A condition variable that signals when the lock is available
     pthread_cond_t cv;
+
     // A counter that keeps track of the number of active readers
     int readers;
+
     // A flag that indicates whether there is an active writer
     int writer;
+
 } rwlock_t;
+
 
 // A function that initializes a reader-writer lock
 void rwlock_init(rwlock_t *lock) {
+
     // Initialize the mutex
     pthread_mutex_init(&lock->mutex, NULL);
+
     // Initialize the condition variable
     pthread_cond_init(&lock->cv, NULL);
+
     // Initialize the number of active readers to zero
     lock->readers = 0;
+
     // Initialize the flag of active writer to zero
     lock->writer = 0;
 }
 
+
 // A function that acquires a read lock
 void readLock(rwlock_t *lock) {
+
     // Lock the mutex
     pthread_mutex_lock(&lock->mutex);
 
@@ -46,8 +58,10 @@ void readLock(rwlock_t *lock) {
     pthread_mutex_unlock(&lock->mutex);
 }
 
+
 // A function that releases a read lock
 void readUnlock(rwlock_t *lock) {
+
     // Lock the mutex
     pthread_mutex_lock(&lock->mutex);
 
@@ -63,8 +77,10 @@ void readUnlock(rwlock_t *lock) {
     pthread_mutex_unlock(&lock->mutex);
 }
 
+
 // A function that acquires a write lock
 void writeLock(rwlock_t *lock) {
+
     // Lock the mutex
     pthread_mutex_lock(&lock->mutex);
 
@@ -73,19 +89,21 @@ void writeLock(rwlock_t *lock) {
         pthread_cond_wait(&lock->cv, &lock->mutex);
     }
 
-    // Set the writer flag with appropriate value
+    // Set the writer flag
     lock->writer = 1;
 
     // Unlock the mutex
     pthread_mutex_unlock(&lock->mutex);
 }
 
+
 // A function that releases a write lock
 void writeUnlock(rwlock_t *lock) {
+
     // Lock the mutex
     pthread_mutex_lock(&lock->mutex);
 
-    // Set the writer flag with appropriate value
+    // Reset the writer flag
     lock->writer = 0;
 
     // Wake all waiting readers and writers
@@ -95,20 +113,45 @@ void writeUnlock(rwlock_t *lock) {
     pthread_mutex_unlock(&lock->mutex);
 }
 
-// global variables that represent the shared data
-// open a file named "file.txt" in read-write mode, creating it if it doesn't exist.
-// Also ensure every write follows append.
+
+// A helper function to write integer numbers using write()
+void writeNumber(int fd, int num) {
+
+    char digits[20];
+    int i = 0;
+
+    // Handle zero separately
+    if (num == 0) {
+        write(fd, "0", 1);
+        return;
+    }
+
+    // Store digits in reverse order
+    while (num > 0) {
+        digits[i] = (num % 10) + '0';
+        num = num / 10;
+        i++;
+    }
+
+    // Write digits in correct order
+    while (i > 0) {
+        i--;
+        write(fd, &digits[i], 1);
+    }
+}
+
+
+// Global variables that represent the shared data
 int fd;
 int data = 0;
 
 // A global variable that represents the reader-writer lock
 rwlock_t lock;
 
-// This mutex protects the file offset when readers use lseek() and read()
-pthread_mutex_t fileMutex;
 
 // A function that simulates a reader thread
 void *reader(void *arg) {
+
     // Get the thread id from the argument
     int id = *(int *)arg;
 
@@ -117,23 +160,45 @@ void *reader(void *arg) {
 
     printf("Reader %d: data = %d\n", id, data);
 
-    // Read the file and print its content in the terminal
+    // Open the file for reading
+    int readFd;
+
+    // Buffer to store file content
     char buffer[101];
+
+    // Variable to store number of bytes read
     int bytesRead;
 
-    pthread_mutex_lock(&fileMutex);
+    readFd = open("file.txt", O_RDONLY);
 
-    lseek(fd, 0, SEEK_SET);
-    bytesRead = read(fd, buffer, 100);
+    // Check if open failed
+    if (readFd < 0) {
 
-    if (bytesRead < 0) {
-        perror("read");
+        perror("open");
+
     } else {
-        buffer[bytesRead] = '\0';
-        printf("Reader thread id: %d -> with data: %d -> file content: %s\n", id, data, buffer);
-    }
 
-    pthread_mutex_unlock(&fileMutex);
+        // Read up to 100 bytes from the file
+        bytesRead = read(readFd, buffer, 100);
+
+        // Check if read failed
+        if (bytesRead < 0) {
+
+            perror("read");
+
+        } else {
+
+            // Add null character at end of string
+            buffer[bytesRead] = '\0';
+
+            // Print file content
+            printf("Reader thread id: %d -> with data: %d -> file content: %s\n",
+                   id, data, buffer);
+        }
+
+        // Close the file
+        close(readFd);
+    }
 
     // Release a read lock
     readUnlock(&lock);
@@ -141,23 +206,31 @@ void *reader(void *arg) {
     return NULL;
 }
 
+
 // A function that simulates a writer thread
 void *writer(void *arg) {
+
     // Get the thread id from the argument
     int id = *(int *)arg;
 
     // Acquire a write lock
     writeLock(&lock);
 
+    // Increment shared data
     data++;
+
     printf("Writer %d: data = %d\n", id, data);
 
-    // Write the writer thread id and data to the file
-    char message[100];
-    int length;
+    // Write thread information into file
+    write(fd, "Writer thread: ", strlen("Writer thread: "));
 
-    length = snprintf(message, sizeof(message), "Writer thread: %d with data: %d\n", id, data);
-    write(fd, message, length);
+    writeNumber(fd, id);
+
+    write(fd, " with data: ", strlen(" with data: "));
+
+    writeNumber(fd, data);
+
+    write(fd, "\n", 1);
 
     // Release a write lock
     writeUnlock(&lock);
@@ -165,27 +238,29 @@ void *writer(void *arg) {
     return NULL;
 }
 
+
 // A constant that defines the number of reader threads
 #define NUM_READERS 5
 
 // A constant that defines the number of writer threads
 #define NUM_WRITERS 3
 
+
 // The main function
 int main(int argc, char *argv[]) {
+
     // Open file.txt in read-write mode, create it if needed, and append on write
     fd = open("file.txt", O_RDWR | O_CREAT | O_APPEND, 0644);
 
+    // Check if file open failed
     if (fd < 0) {
+
         perror("open");
         return 1;
     }
 
     // Initialize the reader-writer lock
     rwlock_init(&lock);
-
-    // Initialize the file mutex
-    pthread_mutex_init(&fileMutex, NULL);
 
     // Create an array of reader thread ids
     int readerIds[NUM_READERS];
@@ -201,6 +276,7 @@ int main(int argc, char *argv[]) {
 
     // Loop through the writer thread ids
     for (int i = 0; i < NUM_WRITERS; i++) {
+
         // Assign the id to the current index
         writerIds[i] = i + 1;
 
@@ -210,6 +286,7 @@ int main(int argc, char *argv[]) {
 
     // Loop through the reader thread ids
     for (int i = 0; i < NUM_READERS; i++) {
+
         // Assign the id to the current index
         readerIds[i] = i + 1;
 
@@ -219,16 +296,19 @@ int main(int argc, char *argv[]) {
 
     // Loop through the writer thread handles
     for (int i = 0; i < NUM_WRITERS; i++) {
+
         // Join the writer thread
         pthread_join(writerThreads[i], NULL);
     }
 
     // Loop through the reader thread handles
     for (int i = 0; i < NUM_READERS; i++) {
+
         // Join the reader thread
         pthread_join(readerThreads[i], NULL);
     }
 
+    // Close the file
     close(fd);
 
     return 0;
